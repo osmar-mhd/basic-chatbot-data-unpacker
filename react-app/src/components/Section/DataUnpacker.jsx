@@ -3,10 +3,9 @@ import '../../assets/css/section.css';
 
 function DataUnpacker() {
   const [inputData, setInputData] = useState('');
-  const [unpackedData, setUnpackedData] = useState([]);
-  const [encryptedWords, setEncryptedWords] = useState({}); // Para guardar las palabras cifradas
+  const [unpackedData, setUnpackedData] = useState([]); // Para guardar los datos desempaquetados
 
-  const handleSubmit = async (e) => {
+  const handleUnpack = async (e) => {
     e.preventDefault();
 
     try {
@@ -15,7 +14,7 @@ function DataUnpacker() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ data: inputData.split(' ') }),
+        body: JSON.stringify({ data: inputData.split(' ') }), // Enviar los datos como un arreglo
       });
 
       if (!response.ok) {
@@ -23,38 +22,37 @@ function DataUnpacker() {
       }
 
       const result = await response.json();
-      setUnpackedData(Object.entries(result.unpacked)); // Guardar los datos desempaquetados como un arreglo de entradas
+      const unpackedItems = Object.entries(result.unpacked);
+
+      // Obtener respuestas para cada palabra
+      const responses = await Promise.all(unpackedItems.map(async ([key, value]) => {
+        const response = await fetch('/response', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ text: value }), // Enviar la palabra para obtener la respuesta
+        });
+
+        if (!response.ok) {
+          throw new Error(`Error: ${response.status}`);
+        }
+
+        const result = await response.json();
+        return { key, value, respuesta: result.response }; // Retornar la palabra y su respuesta
+      }));
+
+      setUnpackedData(responses); // Guardar los datos desempaquetados con respuestas
     } catch (error) {
       console.error('Error fetching data:', error);
       setUnpackedData([]); // Limpiar los datos en caso de error
     }
   };
 
-  const handleEncrypt = async (word) => {
-    try {
-      const response = await fetch('/encrypt', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ word }), // Enviar la palabra seleccionada
-      });
-
-      if (!response.ok) {
-        throw new Error(`Error: ${response.status}`);
-      }
-
-      const result = await response.json();
-      setEncryptedWords((prev) => ({ ...prev, [word]: result.encrypted })); // Guardar la palabra cifrada
-    } catch (error) {
-      console.error('Error encrypting word:', error);
-    }
-  };
-
   return (
     <section>
-      <h1>Unpack Data</h1>
-      <form onSubmit={handleSubmit}>
+      <h1>Basic Chatbot Unpack Data</h1>
+      <form onSubmit={handleUnpack}>
         <input
           type="text"
           value={inputData}
@@ -63,32 +61,24 @@ function DataUnpacker() {
         />
         <button type="submit">Aceptar</button>
       </form>
+
       {unpackedData.length > 0 && (
         <div>
+          <h2>Datos Desempaquetados</h2>
           <table>
             <thead>
               <tr>
+                <th>Ítem</th>
                 <th>Palabra</th>
-                <th>Acciones</th>
-                <th>Palabra Cifrada</th>
+                <th>Respuesta</th>
               </tr>
             </thead>
             <tbody>
-              {unpackedData.map(([key, value], index) => (
+              {unpackedData.map((item, index) => (
                 <tr key={index}>
-                  <td>{value}</td>
-                  <td>
-                    <button onClick={() => handleEncrypt(value)}>
-                      Cifrar
-                    </button>
-                  </td>
-                  <td>
-                    {encryptedWords[value] && (
-                      <span>
-                        {encryptedWords[value]}
-                      </span>
-                    )}
-                  </td>
+                  <td>{item.key}</td>
+                  <td>{item.value}</td>
+                  <td>{item.respuesta}</td>
                 </tr>
               ))}
             </tbody>
